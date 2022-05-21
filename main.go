@@ -18,7 +18,11 @@ import (
 var config *ConfigObj
 
 func main() {
-	config = loadJSONConfig("config/config.json")
+	if len(os.Args) < 2 {
+		log.Fatalf("you must include the config file path")
+	}
+
+	config = loadJSONConfig(os.Args[1])
 	// create context
 	ctx, cancel := chromedp.NewContext(
 		context.Background(),
