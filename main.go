@@ -4,9 +4,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 )
 
 func main() {
+	config := loadJSONConfig("config/config.json")
 	// create context
 	ctx, cancel := chromedp.NewContext(
 		context.Background(),
@@ -21,23 +24,31 @@ func main() {
 	)
 	defer cancel()
 
-	url := "https://caltopo.com/map.html#ll=36.09336,-105.40867&z=12&b=mbt&a=modis_mp"
+	for _, shot := range config.Shots {
 
-	filename := generateScreenshotFilename("caltopo-sipapu")
-	path := filepath.Join("screenshots", "caltopo-sipapu", filename)
-	// capture screenshot of an element
-	var buf []byte
+		filename := generateScreenshotFilename(shot.Name)
+		subdir := filepath.Join(config.BaseDir, shot.Name)
 
-	// capture entire browser viewport, returning png with quality=90
-	if err := chromedp.Run(ctx, fullScreenshot(url, 90, &buf)); err != nil {
+		err := os.MkdirAll(subdir, 0774)
+		if err != nil {
+			log.Fatalf("unable to create directory %s", subdir)
+		}
 
-		log.Fatal(err)
+		fullpath := filepath.Join(subdir, filename)
+		// capture screenshot of an element
+		var buf []byte
+
+		// capture entire browser viewport, returning png with quality=90
+		if err := chromedp.Run(ctx, fullScreenshot(shot.URL, 90, &buf)); err != nil {
+
+			log.Fatal(err)
+		}
+		if err := ioutil.WriteFile(fullpath, buf, 0o644); err != nil {
+			log.Fatal(err)
+		} else {
+			log.Printf("created screenshot %s", fullpath)
+		}
 	}
-	if err := ioutil.WriteFile(path, buf, 0o644); err != nil {
-		log.Fatal(err)
-	}
-
-	log.Printf("wrote elementScreenshot.png and fullScreenshot.png")
 }
 
 // elementScreenshot takes a screenshot of a specific element.
@@ -70,4 +81,37 @@ func generateScreenshotFilename(prefix string) string {
 	dt := time.Now()
 	timestamp := dt.Format("D01_02_2006-T15_04_05")
 	return fmt.Sprintf("%s-%s.png", prefix, timestamp)
+}
+
+type ConfigObj struct {
+	BaseDir string `json:"screenshot_base_dir"`
+	Shots   []ShotObj
+}
+type ShotObj struct {
+	Name string
+	URL  string `json:"url"`
+}
+
+func loadJSONConfig(filepath string) *ConfigObj {
+	jsonFile, err := os.Open(filepath)
+	if err != nil {
+		log.Fatalf("failed to open config %s: %v", filepath, err)
+	}
+	defer jsonFile.Close()
+
+	byteValue, err := ioutil.ReadAll(jsonFile)
+	if err != nil {
+		log.Fatalf("unable to parse bytevalue of %s: %v", filepath, err)
+	}
+	var configObj ConfigObj
+	json.Unmarshal(byteValue, &configObj)
+
+	fi, err := os.Stat(configObj.BaseDir)
+	if err != nil {
+		log.Fatalf("unable to stat the base directory %s", configObj.BaseDir)
+	}
+	if !fi.IsDir() {
+		log.Fatalf("base directory is not a directory %s", configObj.BaseDir)
+	}
+	return &configObj
 }
