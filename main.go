@@ -15,8 +15,10 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+var config *ConfigObj
+
 func main() {
-	config := loadJSONConfig("config/config.json")
+	config = loadJSONConfig("config/config.json")
 	// create context
 	ctx, cancel := chromedp.NewContext(
 		context.Background(),
@@ -39,7 +41,7 @@ func main() {
 		var buf []byte
 
 		// capture entire browser viewport, returning png with quality=90
-		if err := chromedp.Run(ctx, fullScreenshot(shot.URL, 90, &buf)); err != nil {
+		if err := chromedp.Run(ctx, fullScreenshot(&shot, &buf)); err != nil {
 
 			log.Fatal(err)
 		}
@@ -63,17 +65,21 @@ func elementScreenshot(urlstr, sel string, res *[]byte) chromedp.Tasks {
 //
 // Note: chromedp.FullScreenshot overrides the device's emulation settings. Use
 // device.Reset to reset the emulation and viewport settings.
-func fullScreenshot(urlstr string, quality int, res *[]byte) chromedp.Tasks {
-	//str := kb.Control + "o"
+func fullScreenshot(shot *ShotObj, res *[]byte) chromedp.Tasks {
+	//
+	scriptsBytes, err := ioutil.ReadFile(filepath.Join(config.ScriptsDir, shot.Script))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Convert []byte to string and print to screen
+	code := string(scriptsBytes)
 	return chromedp.Tasks{
 		chromedp.EmulateViewport(1920, 1080),
-		chromedp.Navigate(urlstr),
-		chromedp.Sleep(time.Second * 2),
-		chromedp.Evaluate("let cookie = document.getElementById('cookie-banner'); cookie.parentNode.removeChild(cookie)", nil),
-		chromedp.Evaluate("let node = document.getElementById('page_top'); node.parentNode.removeChild(node)", nil),
-		chromedp.Evaluate("let left = document.getElementById('page_left'); left.parentNode.removeChild(left)", nil),
-		chromedp.Evaluate("let right = document.getElementById('page_right'); right.parentNode.removeChild(right)", nil),
-		chromedp.FullScreenshot(res, quality),
+		chromedp.Navigate(shot.URL),
+		chromedp.Sleep(time.Second * time.Duration(shot.Sleep)),
+		chromedp.Evaluate(code, nil),
+		chromedp.FullScreenshot(res, shot.Quality),
 	}
 }
 
@@ -84,34 +90,62 @@ func generateScreenshotFilename(prefix string) string {
 }
 
 type ConfigObj struct {
-	BaseDir string `json:"screenshot_base_dir"`
-	Shots   []ShotObj
+	BaseDir    string `json:"screenshots_base_dir"`
+	ScriptsDir string `json:"scripts_base_dir"`
+	Shots      []ShotObj
 }
 type ShotObj struct {
-	Name string
-	URL  string `json:"url"`
+	Name    string
+	URL     string `json:"url"`
+	Script  string
+	Sleep   int64
+	Quality int
 }
 
-func loadJSONConfig(filepath string) *ConfigObj {
-	jsonFile, err := os.Open(filepath)
+func loadJSONConfig(configpath string) *ConfigObj {
+	jsonFile, err := os.Open(configpath)
 	if err != nil {
-		log.Fatalf("failed to open config %s: %v", filepath, err)
+		log.Fatalf("failed to open config %s: %v", configpath, err)
 	}
 	defer jsonFile.Close()
 
 	byteValue, err := ioutil.ReadAll(jsonFile)
 	if err != nil {
-		log.Fatalf("unable to parse bytevalue of %s: %v", filepath, err)
+		log.Fatalf("unable to parse bytevalue of %s: %v", configpath, err)
 	}
 	var configObj ConfigObj
 	json.Unmarshal(byteValue, &configObj)
 
-	fi, err := os.Stat(configObj.BaseDir)
-	if err != nil {
-		log.Fatalf("unable to stat the base directory %s", configObj.BaseDir)
-	}
-	if !fi.IsDir() {
-		log.Fatalf("base directory is not a directory %s", configObj.BaseDir)
+	// Verify dirs exist
+	existsFatal(configObj.BaseDir)
+	existsFatal(configObj.ScriptsDir)
+
+	// Verify script files exist
+	for _, shot := range configObj.Shots {
+		existsFatal(filepath.Join(configObj.ScriptsDir, shot.Script))
 	}
 	return &configObj
+}
+
+// fatality if dir or file doesn't exist
+func existsFatal(path string) {
+	ok, err := exists(path)
+	if !ok && err == nil {
+		log.Fatalf("file or directory doesn't exist: %s", path)
+	}
+	if !ok && err != nil {
+		log.Fatalf("error stating file or directory %s : %v", path, err)
+	}
+}
+
+// exists returns whether the given file or directory exists
+func exists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
