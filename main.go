@@ -24,13 +24,13 @@ func main() {
 
 	config = loadJSONConfig(os.Args[1])
 	// create context
-	ctx, cancel := chromedp.NewContext(
-		context.Background(),
-		// chromedp.WithDebugf(log.Printf),
-	)
-	defer cancel()
 
 	for _, shot := range config.Shots {
+
+		ctx, cancel := chromedp.NewContext(
+			context.Background(),
+			// chromedp.WithDebugf(log.Printf),
+		)
 
 		filename := generateScreenshotFilename(shot.Name)
 		subdir := filepath.Join(config.BaseDir, shot.Name)
@@ -54,6 +54,7 @@ func main() {
 		} else {
 			log.Printf("created screenshot %s", fullpath)
 		}
+		cancel()
 	}
 }
 
@@ -79,6 +80,8 @@ func fullScreenshot(shot *ShotObj, res *[]byte) chromedp.Tasks {
 	// Convert []byte to string and print to screen
 	code := string(scriptsBytes)
 	return chromedp.Tasks{
+		chromedp.EmulateReset(),
+		chromedp.ResetViewport(),
 		chromedp.EmulateViewport(shot.Width, shot.Height),
 		chromedp.Navigate(shot.URL),
 		chromedp.Sleep(time.Second * time.Duration(shot.Sleep)),
