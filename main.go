@@ -79,7 +79,7 @@ func fullScreenshot(shot *ShotObj, res *[]byte) chromedp.Tasks {
 	// Convert []byte to string and print to screen
 	code := string(scriptsBytes)
 	return chromedp.Tasks{
-		chromedp.EmulateViewport(1920, 1080),
+		chromedp.EmulateViewport(shot.Width, shot.Height),
 		chromedp.Navigate(shot.URL),
 		chromedp.Sleep(time.Second * time.Duration(shot.Sleep)),
 		chromedp.Evaluate(code, nil),
@@ -104,6 +104,8 @@ type ShotObj struct {
 	Script  string
 	Sleep   int64
 	Quality int
+	Width   int64
+	Height  int64
 }
 
 func loadJSONConfig(configpath string) *ConfigObj {
